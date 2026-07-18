@@ -20,8 +20,8 @@ AuraMock 3D is a premium, open-source web application designed to create stunnin
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/auramock-3d.git
-cd auramock-3d
+git clone https://github.com/AstraLoay/AuraMock-3D.git
+cd AuraMock-3D
 ```
 
 ### 2. Run Locally
@@ -38,6 +38,26 @@ npx http-server -p 8000
 
 Open `http://localhost:8000` in your web browser.
 
+### Development and validation
+
+AuraMock has no required runtime package dependencies. Node.js 20 or newer is used
+for validation and production packaging:
+
+```bash
+npm run check
+npm test
+npm run build
+```
+
+Run everything with:
+
+```bash
+npm run validate
+```
+
+The production-ready static site is written to `dist/`. GitHub Pages deploys only
+this allow-listed directory rather than the repository root.
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
@@ -47,6 +67,34 @@ AuraMock 3D is built with performance and simplicity in mind:
 - **Canvas Composition:** Standard **HTML5 2D Canvas** coordinates the text layers, stickers, backgrounds, and device overlays for high-resolution exports.
 - **Client-Side Storage:** **IndexedDB** handles multi-project states, screenshots, and local file storage.
 - **Styling:** Custom CSS with dark mode variables, glassmorphism filters, and smooth 3D CSS transform micro-animations.
+
+## 🔐 Privacy and API keys
+
+Projects and imported screenshots stay in your browser unless you explicitly
+export or send content to an AI provider. AI features send the requested text or
+images directly to the provider selected in Settings.
+
+API keys use session-only browser storage by default. You can opt into remembering
+them on the current device, but browser storage is not encrypted. Avoid saving
+keys on shared devices and use **Forget all API keys** when finished.
+
+## 🌐 Browser support
+
+Use a current version of Chrome, Edge, Firefox, or Safari with Canvas, IndexedDB,
+WebGL, and ES2021 support enabled. If WebGL is unavailable, use the 2D device mode.
+
+Common recovery steps:
+
+- If a 3D model does not appear, confirm WebGL/hardware acceleration is enabled.
+- If a project cannot save, check the browser's site-storage quota and export a backup.
+- If an export is interrupted, reduce the number of screenshots or export one language at a time.
+- If a saved asset is corrupt, AuraMock restores an empty placeholder and loads the remainder of the project.
+
+## Project compatibility
+
+Backups are JSON files containing versioned project records. Keep backups before
+large browser or operating-system migrations. Imported backups are structurally
+validated, and older project layouts are migrated when supported.
 
 ---
 

@@ -69,7 +69,7 @@ function getSelectedProvider() {
 function getApiKey(provider) {
     const config = llmProviders[provider];
     if (!config) return null;
-    return localStorage.getItem(config.storageKey);
+    return sessionStorage.getItem(config.storageKey) || localStorage.getItem(config.storageKey);
 }
 
 /**

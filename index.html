@@ -1720,7 +1720,7 @@
                     </svg>
                     AI Translation Provider
                 </h4>
-                <p class="settings-description">Choose which AI provider to use for translations. API keys are stored locally in your browser.</p>
+                <p class="settings-description">Choose which AI provider to use for translations. Session-only storage is recommended on shared devices.</p>
                 <div class="settings-provider-selector">
                     <label class="settings-provider-option">
                         <input type="radio" name="ai-provider" value="anthropic" checked>
@@ -1828,6 +1828,15 @@
                     </svg>
                     Get your API key from Google AI Studio
                 </a>
+            </div>
+
+            <div class="settings-section">
+                <label class="settings-provider-option">
+                    <input type="checkbox" id="settings-remember-api-keys">
+                    <span class="provider-label">Remember API keys on this device</span>
+                </label>
+                <p class="settings-description">When disabled, keys are removed when this browser session ends. Browser storage is not encrypted.</p>
+                <button class="modal-btn modal-btn-cancel" id="settings-forget-api-keys" type="button">Forget all API keys</button>
             </div>
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px;">
@@ -2127,6 +2136,7 @@
         </div>
     </div>
 
+    <script src="core-utils.js"></script>
     <script src="llm.js"></script>
     <script src="language-utils.js"></script>
     <script src="magical-titles.js"></script>

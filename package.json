@@ -1,0 +1,15 @@
+{
+  "name": "auramock-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aesthetic app-store screenshot builder with interactive 3D devices.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "validate": "npm run check && npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -378,7 +378,7 @@ const lucideSVGCache = new Map(); // name -> raw SVG text
 
 async function fetchLucideSVG(name) {
     if (lucideSVGCache.has(name)) return lucideSVGCache.get(name);
-    const url = `https://unpkg.com/lucide-static@latest/icons/${name}.svg`;
+    const url = `https://unpkg.com/lucide-static@0.468.0/icons/${encodeURIComponent(name)}.svg`;
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Failed to fetch icon: ${name}`);
     const svgText = await resp.text();
@@ -1109,12 +1109,12 @@ async function renderFontList(pickerId, ids) {
 
         return `
             <div class="font-option ${isSelected ? 'selected' : ''}"
-                 data-font-name="${font.name}"
-                 data-font-value="${font.value}"
-                 data-font-category="${font.category}">
-                <span class="font-option-name" style="font-family: ${isLoaded ? font.value : 'inherit'}">${font.name}</span>
+                 data-font-name="${escapeHTML(font.name)}"
+                 data-font-value="${escapeHTML(font.value)}"
+                 data-font-category="${escapeHTML(font.category)}">
+                <span class="font-option-name" style="font-family: ${isLoaded ? escapeHTML(font.value) : 'inherit'}">${escapeHTML(font.name)}</span>
                 ${isLoading ? '<span class="font-option-loading">Loading...</span>' :
-                `<span class="font-option-category">${font.category}</span>`}
+                `<span class="font-option-category">${escapeHTML(font.category)}</span>`}
             </div>
         `;
     }).join('');
@@ -1253,6 +1253,26 @@ const deviceDimensions = {
 };
 
 // DOM elements
+const { escapeHTML, isBackupShape, sanitizeFilename } = AuraMockCore;
+
+function canvasToBlob(sourceCanvas, type = 'image/png', quality) {
+    return new Promise((resolve, reject) => {
+        sourceCanvas.toBlob(blob => {
+            if (blob) resolve(blob);
+            else reject(new Error('The browser could not encode the canvas.'));
+        }, type, quality);
+    });
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 const canvas = document.getElementById('preview-canvas');
 const ctx = canvas.getContext('2d');
 const canvasLeft = document.getElementById('preview-canvas-left');
@@ -1324,6 +1344,15 @@ const DB_NAME = 'AppStoreScreenshotGenerator';
 const DB_VERSION = 2;
 const PROJECTS_STORE = 'projects';
 const META_STORE = 'meta';
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+function recoverBrokenImage(image, description) {
+    image.onerror = () => {
+        console.warn(`Could not restore ${description}; using an empty placeholder.`);
+        image.onerror = null;
+        image.src = TRANSPARENT_PIXEL;
+    };
+}
 
 let currentProjectId = 'default';
 let projects = [{ id: 'default', name: 'Default Project', screenshotCount: 0 }];
@@ -1440,7 +1469,7 @@ function updateProjectSelector() {
         const screenshotCount = project.id === currentProjectId ? state.screenshots.length : (project.screenshotCount || 0);
 
         option.innerHTML = `
-            <span class="project-option-name">${project.name}</span>
+            <span class="project-option-name">${escapeHTML(project.name)}</span>
             <span class="project-option-meta">${screenshotCount} screenshot${screenshotCount !== 1 ? 's' : ''}</span>
         `;
 
@@ -1474,6 +1503,7 @@ async function init() {
 
 // Set up event listeners immediately (don't wait for async init)
 function initSync() {
+    improveAccessibility();
     setupEventListeners();
     setupElementEventListeners();
     setupPopoutEventListeners();
@@ -1492,6 +1522,55 @@ function initSync() {
     updateCanvas();
     // Then load saved data asynchronously
     init();
+}
+
+function improveAccessibility() {
+    document.querySelectorAll('button').forEach(button => {
+        if (!button.hasAttribute('type')) button.type = 'button';
+        if (!button.hasAttribute('aria-label')) {
+            const visibleText = button.textContent.trim().replace(/\s+/g, ' ');
+            const label = button.title || visibleText;
+            if (label) button.setAttribute('aria-label', label);
+        }
+    });
+
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        const dialog = overlay.querySelector('.modal');
+        if (!dialog) return;
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('tabindex', '-1');
+        const heading = dialog.querySelector('.modal-title');
+        if (heading) {
+            if (!heading.id) heading.id = `${overlay.id || 'dialog'}-title`;
+            dialog.setAttribute('aria-labelledby', heading.id);
+        }
+    });
+
+    document.querySelectorAll('input, select, textarea').forEach(control => {
+        if (control.hasAttribute('aria-label') || control.hasAttribute('aria-labelledby')) return;
+        const wrappingLabel = control.closest('label');
+        const nearbyLabel = control.closest('.control-group, .settings-model-group, .settings-input-group')
+            ?.querySelector('label, .control-label, .settings-model-label');
+        const label = wrappingLabel?.textContent.trim() || nearbyLabel?.textContent.trim() ||
+            control.placeholder || control.name || control.id;
+        if (label) control.setAttribute('aria-label', label.replace(/\s+/g, ' '));
+    });
+
+    const exportStatus = document.getElementById('export-progress-status');
+    if (exportStatus) {
+        exportStatus.setAttribute('role', 'status');
+        exportStatus.setAttribute('aria-live', 'polite');
+    }
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const visibleOverlay = [...document.querySelectorAll('.modal-overlay.visible')].pop();
+        if (visibleOverlay) {
+            visibleOverlay.classList.remove('visible');
+            event.preventDefault();
+        }
+    });
 }
 
 // Save state to IndexedDB for current project
@@ -1559,6 +1638,28 @@ function saveState() {
         console.error('Error saving state:', e);
     }
 }
+
+let pendingSaveTimer = null;
+function scheduleStateSave(delay = 500) {
+    clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = setTimeout(() => {
+        pendingSaveTimer = null;
+        saveState();
+    }, delay);
+}
+
+function flushStateSave() {
+    if (pendingSaveTimer !== null) {
+        clearTimeout(pendingSaveTimer);
+        pendingSaveTimer = null;
+        saveState();
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushStateSave();
+});
+window.addEventListener('pagehide', flushStateSave);
 
 // Migrate 3D positions from old formula to new formula
 // Old: xOffset = ((x-50)/50)*2, yOffset = -((y-50)/50)*3
@@ -1691,6 +1792,7 @@ function loadState() {
                                     const langData = s.localizedImages[lang];
                                     if (langData?.src) {
                                         const langImg = new Image();
+                                        recoverBrokenImage(langImg, `${s.name || 'screenshot'} (${lang})`);
                                         langImg.onload = () => {
                                             localizedImages[lang] = {
                                                 image: langImg,
@@ -1734,6 +1836,7 @@ function loadState() {
                             } else {
                                 // Old format: migrate to localized images
                                 const img = new Image();
+                                recoverBrokenImage(img, s.name || 'screenshot');
                                 img.onload = () => {
                                     // Detect language from filename, default to 'en'
                                     const detectedLang = typeof detectLanguageFromFilename === 'function'
@@ -2371,11 +2474,11 @@ function updateElementsList() {
 
         let thumbContent;
         if (el.type === 'graphic' && el.image) {
-            thumbContent = `<img src="${el.image.src}" alt="${el.name}">`;
+            thumbContent = `<img src="${escapeHTML(el.image.src)}" alt="${escapeHTML(el.name)}">`;
         } else if (el.type === 'emoji') {
             thumbContent = `<span class="emoji-thumb">${el.emoji}</span>`;
         } else if (el.type === 'icon' && el.image) {
-            thumbContent = `<img src="${el.image.src}" alt="${el.name}" style="padding: 4px; filter: var(--icon-thumb-filter, none);">`;
+            thumbContent = `<img src="${escapeHTML(el.image.src)}" alt="${escapeHTML(el.name)}" style="padding: 4px; filter: var(--icon-thumb-filter, none);">`;
         } else {
             thumbContent = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>
@@ -2385,7 +2488,7 @@ function updateElementsList() {
         item.innerHTML = `
             <div class="element-item-thumb">${thumbContent}</div>
             <div class="element-item-info">
-                <div class="element-item-name">${el.type === 'text' ? (getElementText(el) || 'Text') : el.type === 'emoji' ? `${el.emoji} ${el.name}` : el.name}</div>
+                <div class="element-item-name">${escapeHTML(el.type === 'text' ? (getElementText(el) || 'Text') : el.type === 'emoji' ? `${el.emoji} ${el.name}` : el.name)}</div>
                 <div class="element-item-layer">${layerLabels[el.layer] || el.layer}</div>
             </div>
             <div class="element-item-actions">
@@ -3839,6 +3942,9 @@ function setupEventListeners() {
         try {
             const text = await file.text();
             const dump = JSON.parse(text);
+            if (!isBackupShape(dump)) {
+                throw new Error('This file is not a valid AuraMock backup.');
+            }
             for (const storeName of Object.keys(dump)) {
                 if (!db.objectStoreNames.contains(storeName)) continue;
                 const tx = db.transaction(storeName, 'readwrite');
@@ -4043,6 +4149,10 @@ function setupEventListeners() {
 
     document.getElementById('settings-modal-save').addEventListener('click', () => {
         saveSettings();
+    });
+    document.getElementById('settings-forget-api-keys').addEventListener('click', async () => {
+        forgetAllApiKeys();
+        await showAppAlert('All saved API keys have been removed.', 'info');
     });
 
     // Theme selector buttons
@@ -5171,7 +5281,7 @@ async function aiTranslateAll() {
     // Get selected provider and API key
     const provider = getSelectedProvider();
     const providerConfig = llmProviders[provider];
-    const apiKey = localStorage.getItem(providerConfig.storageKey);
+    const apiKey = getApiKey(provider);
 
     if (!apiKey) {
         setTranslateStatus(`Add your LLM API key in Settings to use AI translation.`, 'error');
@@ -5484,7 +5594,7 @@ async function translateAllText() {
     // Get selected provider and API key
     const provider = getSelectedProvider();
     const providerConfig = llmProviders[provider];
-    const apiKey = localStorage.getItem(providerConfig.storageKey);
+    const apiKey = getApiKey(provider);
 
     if (!apiKey) {
         await showAppAlert('Add your LLM API key in Settings to use AI translation.', 'error');
@@ -5817,7 +5927,7 @@ function openSettingsModal() {
 
     // Load all saved API keys and models
     Object.entries(llmProviders).forEach(([provider, config]) => {
-        const savedKey = localStorage.getItem(config.storageKey);
+        const savedKey = getApiKey(provider);
         const input = document.getElementById(`settings-api-key-${provider}`);
         if (input) {
             input.value = savedKey || '';
@@ -5851,6 +5961,8 @@ function openSettingsModal() {
     document.querySelectorAll('#theme-selector button').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === savedTheme);
     });
+    document.getElementById('settings-remember-api-keys').checked =
+        localStorage.getItem('rememberApiKeys') === 'true';
 
     document.getElementById('settings-modal').classList.add('visible');
 }
@@ -5871,6 +5983,8 @@ function saveSettings() {
     // Save selected provider
     const selectedProvider = document.querySelector('input[name="ai-provider"]:checked').value;
     localStorage.setItem('aiProvider', selectedProvider);
+    const rememberKeys = document.getElementById('settings-remember-api-keys').checked;
+    localStorage.setItem('rememberApiKeys', String(rememberKeys));
 
     // Save all API keys and models
     let allValid = true;
@@ -5884,7 +5998,10 @@ function saveSettings() {
         if (key) {
             // Validate key format
             if (key.startsWith(config.keyPrefix)) {
-                localStorage.setItem(config.storageKey, key);
+                const targetStorage = rememberKeys ? localStorage : sessionStorage;
+                const otherStorage = rememberKeys ? sessionStorage : localStorage;
+                targetStorage.setItem(config.storageKey, key);
+                otherStorage.removeItem(config.storageKey);
                 status.textContent = '✓ API key saved';
                 status.className = 'settings-key-status success';
             } else {
@@ -5894,6 +6011,7 @@ function saveSettings() {
             }
         } else {
             localStorage.removeItem(config.storageKey);
+            sessionStorage.removeItem(config.storageKey);
             status.textContent = '';
             status.className = 'settings-key-status';
         }
@@ -5910,6 +6028,20 @@ function saveSettings() {
             document.getElementById('settings-modal').classList.remove('visible');
         }, 500);
     }
+}
+
+function forgetAllApiKeys() {
+    Object.values(llmProviders).forEach(config => {
+        localStorage.removeItem(config.storageKey);
+        sessionStorage.removeItem(config.storageKey);
+        const input = document.getElementById(`settings-api-key-${Object.keys(llmProviders).find(
+            provider => llmProviders[provider] === config
+        )}`);
+        if (input) input.value = '';
+    });
+    localStorage.setItem('rememberApiKeys', 'false');
+    const remember = document.getElementById('settings-remember-api-keys');
+    if (remember) remember.checked = false;
 }
 
 // Helper function to set text value for current screenshot
@@ -6352,7 +6484,7 @@ function updateScreenshotList() {
                     <rect x="3" y="3" width="18" height="18" rx="2"/>
                 </svg>
               </div>`
-            : `<img class="screenshot-thumb" src="${thumbSrc}" alt="${screenshot.name}">`;
+            : `<img class="screenshot-thumb" src="${escapeHTML(thumbSrc)}" alt="${escapeHTML(screenshot.name)}">`;
 
         item.innerHTML = `
             <div class="drag-handle">
@@ -6364,7 +6496,7 @@ function updateScreenshotList() {
             </div>
             ${thumbHtml}
             <div class="screenshot-info">
-                <div class="screenshot-name">${screenshot.name}</div>
+                <div class="screenshot-name">${escapeHTML(screenshot.name)}</div>
                 <div class="screenshot-device">${isTransferTarget ? 'Click source to copy style' : screenshot.deviceType}${langFlagsHtml}</div>
             </div>
             ${buttonsHtml}
@@ -6817,7 +6949,7 @@ function getCanvasDimensions() {
 }
 
 function updateCanvas() {
-    saveState(); // Persist state on every update
+    scheduleStateSave();
     const dims = getCanvasDimensions();
     canvas.width = dims.width;
     canvas.height = dims.height;
@@ -8164,10 +8296,8 @@ async function exportCurrent() {
     // Ensure canvas is up-to-date (especially important for 3D mode)
     updateCanvas();
 
-    const link = document.createElement('a');
-    link.download = `screenshot-${state.selectedIndex + 1}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    const blob = await canvasToBlob(canvas);
+    downloadBlob(blob, `screenshot-${state.selectedIndex + 1}.png`);
 }
 
 async function exportAll() {
@@ -8247,11 +8377,8 @@ async function exportAllForLanguage(lang) {
 
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        // Get canvas data as base64, strip the data URL prefix
-        const dataUrl = canvas.toDataURL('image/png');
-        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-
-        zip.file(`screenshot-${i + 1}.png`, base64Data, { base64: true });
+        const blob = await canvasToBlob(canvas);
+        zip.file(`screenshot-${i + 1}.png`, blob);
     }
 
     // Restore original settings
@@ -8271,11 +8398,7 @@ async function exportAllForLanguage(lang) {
     await new Promise(resolve => setTimeout(resolve, 1500));
     hideExportProgress();
 
-    const link = document.createElement('a');
-    link.download = `screenshots_${state.outputDevice}_${lang}.zip`;
-    link.href = URL.createObjectURL(content);
-    link.click();
-    URL.revokeObjectURL(link.href);
+    downloadBlob(content, sanitizeFilename(`screenshots_${state.outputDevice}_${lang}`) + '.zip');
 }
 
 // Export all screenshots for all languages (separate folders)
@@ -8319,12 +8442,8 @@ async function exportAllLanguages() {
 
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            // Get canvas data as base64, strip the data URL prefix
-            const dataUrl = canvas.toDataURL('image/png');
-            const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-
-            // Use language code as folder name
-            zip.file(`${lang}/screenshot-${i + 1}.png`, base64Data, { base64: true });
+            const blob = await canvasToBlob(canvas);
+            zip.file(`${lang}/screenshot-${i + 1}.png`, blob);
         }
     }
 
@@ -8345,11 +8464,7 @@ async function exportAllLanguages() {
     await new Promise(resolve => setTimeout(resolve, 1500));
     hideExportProgress();
 
-    const link = document.createElement('a');
-    link.download = `screenshots_${state.outputDevice}_all-languages.zip`;
-    link.href = URL.createObjectURL(content);
-    link.click();
-    URL.revokeObjectURL(link.href);
+    downloadBlob(content, sanitizeFilename(`screenshots_${state.outputDevice}_all-languages`) + '.zip');
 }
 
 // ===== Emoji Picker (inline dropdown) =====
