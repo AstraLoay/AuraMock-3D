@@ -9000,6 +9000,29 @@ function setupAuroraMeshPresets() {
 
 const exampleTemplates = [
     {
+        id: 'astra-black',
+        title: 'AstraAqua Black Launch',
+        description: 'A cinematic monochrome launch system with crisp white typography, deep-black atmosphere, and a premium 3D device composition.',
+        previewGradient: 'radial-gradient(circle at 72% 25%, #34343a 0%, transparent 34%), radial-gradient(circle at 28% 78%, #202024 0%, transparent 42%), #030304',
+        bg: { type: 'gradient', color1: '#030304', color2: '#1b1b1f', gradientAngle: 145 },
+        screenshot: { use3D: true, device3D: 'iphone', scale: 76, y: 58, x: 50, rotation3D: { x: 14, y: -22, z: 7 } },
+        text: {
+            headlineEnabled: true,
+            headlines: { en: 'Clarity in Every Drop' },
+            headlineFont: "'Inter', sans-serif",
+            headlineSize: 92,
+            headlineWeight: '800',
+            headlineColor: '#ffffff',
+            subheadlineEnabled: true,
+            subheadlines: { en: 'Intelligent water solutions, beautifully designed.' },
+            subheadlineFont: "'Inter', sans-serif",
+            subheadlineSize: 38,
+            subheadlineColor: '#c7c7cc',
+            subheadlineOpacity: 92
+        },
+        badges: []
+    },
+    {
         id: 'cosmic',
         title: 'Cosmic Aura (Music App)',
         description: 'Vibrant Cosmic Peach aurora backdrop, rotated 3D iPhone 15 Pro, with Outfit typography and App Store/Play Store stickers.',
